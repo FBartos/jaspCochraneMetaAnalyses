@@ -1,0 +1,10 @@
+Package: jaspCochraneMetaAnalyses
+Type: Package
+Title: Cochrane Meta-Analyses Module for JASP
+Version: 0.14.0
+Date: 2020-11-23
+Author: JASP Team
+Website: jasp-stats.org
+Maintainer: JASP Team <info@jasp-stats.org>
+Description: This module allows to analyze Cochrane medical datasets.
+License: GPL (>= 2)
