@@ -1,1 +1,4 @@
-export(CochraneClassicalMetaAnalysis)
+export(CochraneContinuousClassicalMetaAnalysis)
+export(CochraneDichotomousClassicalMetaAnalysis)
+export(CochraneContinuousBayesianMetaAnalysis)
+export(CochraneDichotomousBayesianMetaAnalysis)

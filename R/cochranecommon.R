@@ -15,14 +15,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state = NULL) {
-  
-  saveRDS(options, file = "C:/Projects/JASP/jasp-R-debug/options.RDS")
-  
+CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) {
+ 
   ### work with the database and dependent menus
   # load the database
   if (is.null(jaspResults[["database"]]))
-    .cochraneLoadDatabase(jaspResults)
+    .cochraneLoadDatabase(jaspResults, type)
   
   # create the qml options based on the database
   if(is.null(jaspResults[["sourceTopics"]]))
@@ -30,40 +28,52 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   if(is.null(jaspResults[["sourceKeywords"]]))
     .cochraneCreateDatabaseKeywords(jaspResults, options)
   
-
+  
   ### create data set based on the database and selection
   # select data
   if (is.null(jaspResults[["dataset"]]))
-    selectedDataset <- .cochraneSelectDataset(jaspResults, options)
+    dataset <- .cochraneSelectDataset(jaspResults, options)
   else
-    selectedDataset <- jaspResults[["dataset"]][["object"]]
+    dataset <- jaspResults[["dataset"]][["object"]]
   
   # sort the data for the forest plots
-  selectedDataset   <- .cochraneSortData(selectedDataset, options)
+  dataset   <- .cochraneSortData(dataset, options)
   
-  # prepare additional qml gadget based on the selected dataset
+  # prepare additional qml gadget based on the selected data set
   if (is.null(jaspResults[["selectionGadget"]]))
-    .cochraneCreateSelectorGadget(jaspResults, selectedDataset)
-
+    .cochraneCreateSelectorGadget(jaspResults, dataset)
+  
   # overview table
   if (is.null(jaspResults[["selectedOverviewTable"]]))
     .cochraneSelectedOverviewTable(jaspResults, options)
   
   
-  ### based with the restricted / modified dataset based with the additional studies + restrictions
+  ### based with the restricted / modified data set based with the additional studies + restrictions
   # applying the additional selection done from the check box interface
-  dataset <- .cochraneRestrictDataset(selectedDataset, options)
+  dataset <- .cochraneRestrictDataset(dataset, options)
   
   # add data
-  if (options[["addStudy"]])
-    dataset <- .cochraneAddData(dataset, options)
+  if (options[["addStudy"]]){
+    if (type %in% c("classicalContinuous", "bayesianContinuous"))
+      dataset <- .cochraneAddContinuousData(dataset, options)
+    else if (type %in% c("classicalDichotomous", "bayesianDichotomous"))
+      dataset <- .cochraneAddDichotomousData(dataset, options)
+  }
+    
   
+  ### add additional arguments for the classical/Bayesian meta-analysis
+  if (type %in% c("classicalContinuous", "classicalDichotomous"))
+    options <- .cochraneEmulateClassicalMetaAnalysisOptions(options, type)   
+  else if (type %in% c("bayesianContinuous", "bayesianDichotomous"))
+    options <- .cochraneEmulateBayesianMetaAnalysisOptions(options, type)
   
-  # reusing classical meta-analysis
-  options <- .cochraneEmulateMetaAnalysisOptions(options)
   ready   <- .cochraneReady(options, dataset)
+
+  saveRDS(ready,   file = "C:/Projects/JASP/jasp-R-debug/debug.RDS")  
+  saveRDS(dataset, file = "C:/Projects/JASP/jasp-R-debug/dataset.RDS")
+  saveRDS(options, file = "C:/Projects/JASP/jasp-R-debug/options.RDS")
   
-  # apply the classical meta-analysis to the dataset
+  ### apply the classical meta-analysis to the data set
   if (options[["analyzeData"]] %in% c("reviews", "metaAnalyses")){
     
     selectWith <- if(options[["analyzeData"]] == "metaAnalyses") "titleMetaAnalysis" else "titleReview"
@@ -79,13 +89,15 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
       
       # overview figures
       if (options[["plotEffectSizes"]])
-        .cochraneDecriptivePlot(tempContainer, tempDataset, "effectSize", options)
+        .cochraneDecriptivePlot(tempContainer, tempDataset, "effectSize", options, type)
       
       # overview figures
       if (options[["plotSampleSizes"]])
-        .cochraneDecriptivePlot(tempContainer, tempDataset, "sampleSize", options)
+        .cochraneDecriptivePlot(tempContainer, tempDataset, "sampleSize", options, type)
       
-      .ClassicalMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
+      if (type %in% c("classicalContinuous", "classicalDichotomous"))
+        .ClassicalMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
+      
       
       progressbarTick()
     }
@@ -96,37 +108,43 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
     
     # overview figures
     if (options[["plotEffectSizes"]])
-      .cochraneDecriptivePlot(container, dataset, "effectSize", options)
+      .cochraneDecriptivePlot(container, dataset, "effectSize", options, type)
     
     # overview figures
     if (options[["plotSampleSizes"]])
-      .cochraneDecriptivePlot(container, dataset, "sampleSize", options)
+      .cochraneDecriptivePlot(container, dataset, "sampleSize", options, type)
     
-    .ClassicalMetaAnalysisCommon(container, dataset, ready, options)
+    if (type %in% c("classicalContinuous", "classicalDichotomous"))
+      .ClassicalMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
   }
-
+  
   
   return()
 }
 
 .cochraneDataDependencies       <- c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "analyzeData",
-                                     "addStudy", "additionalStudies", "selectionGadget")
-.cochraneLoadDatabase           <- function(jaspResults){
-
+                                     "addStudy", "additionalStudies", "selectionGadget", "analyzeAs")
+.cochraneLoadDatabase           <- function(jaspResults, type){
+  
   database         <- createJaspState()
-  database$object  <- readRDS("C:/Projects/JASP/jaspCochraneMetaAnalyses/R/resources/database.RDS")
+  
+  if (type %in% c("classicalContinuous", "bayesianContinuous"))
+    database$object  <- readRDS("C:/Projects/JASP/jaspCochraneMetaAnalyses/R/resources/databaseContinuous.RDS")
+  else if (type %in% c("classicalDichotomous", "bayesianDichotomous"))
+    database$object  <- readRDS("C:/Projects/JASP/jaspCochraneMetaAnalyses/R/resources/databaseDichotomous.RDS")
+    
   jaspResults[["database"]] <- database
   
   return()
 }
-.cochraneAddData                <- function(dataset, options){
+.cochraneAddContinuousData      <- function(dataset, options){
   
   if (length(options[["additionalStudies"]]) == 0)
     return(dataset)
-    
+  
   additionalEstimates <- sapply(options[["additionalStudies"]], function(study)unlist(study), simplify = F)
   additionalEstimates <- data.frame(do.call(rbind, additionalEstimates))
-
+  
   for (i in 1:ncol(additionalEstimates))
     additionalEstimates[,i] <- as.character(additionalEstimates[,i])
   
@@ -145,7 +163,7 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
         .quitAnalysis(gettext("The effect size does not lie within the confidence interval in one of the specified studies."))
       additionalEstimates[i,"effectSE"] <- (additionalEstimates[i,"uCI"] - additionalEstimates[i,"lCI"]) / (qnorm(.975) * 2)
     }
-      
+  
   
   if (any(additionalEstimates[,"effectSE"] < 0))
     .quitAnalysis(gettext("One of the specified studies has a negative standard error."))
@@ -153,12 +171,69 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   additionalEstimates <- additionalEstimates[,c("effectSize",  "effectSE", "titleStudy")]
   additionalEstimates$titleStudy        <- paste0("_add", additionalEstimates$titleStudy)
   additionalEstimates$studyYear         <- NA
+  additionalEstimates$reviewYear        <- NA
   additionalEstimates$doi               <- "_add" 
   additionalEstimates$titleReview       <- "_add"
   additionalEstimates$titleMetaAnalysis <- "_add"
   additionalEstimates$sampleSize        <- NA
   additionalEstimates <- additionalEstimates[,colnames(dataset)]
-
+  
+  dataset <- rbind(dataset, additionalEstimates)
+  
+  return(dataset)
+}
+.cochraneAddDichotomousData     <- function(dataset, options){
+  
+  if (length(options[["additionalStudies"]]) == 0)
+    return(dataset)
+  
+  additionalEstimates <- sapply(options[["additionalStudies"]], function(study)unlist(study), simplify = F)
+  additionalEstimates <- data.frame(do.call(rbind, additionalEstimates))
+  
+  for (i in 1:ncol(additionalEstimates))
+    additionalEstimates[,i] <- as.character(additionalEstimates[,i])
+  
+  for (col in c("effectSize", "effectSE", "x1", "x2", "n1", "n2"))
+    additionalEstimates[,col] <- as.numeric(additionalEstimates[,col])
+  
+  additionalEstimates <- additionalEstimates[(!is.na(additionalEstimates[,"effectSE"]) & !is.na(additionalEstimates[,"effectSize"])) | (!is.na(additionalEstimates[,"x1"]) & !is.na(additionalEstimates[,"x2"]) & !is.na(additionalEstimates[,"n1"]) & !is.na(additionalEstimates[,"n2"])),]
+  
+  if (nrow(additionalEstimates) == 0)
+    return(dataset)
+  
+  for (i in 1:nrow(additionalEstimates))
+    if (is.na(additionalEstimates[i,"effectSE"]) && all(is.numeric(unlist(additionalEstimates[i, c("x1", "x2", "n1", "n2")])))){
+      if (any(unlist(additionalEstimates[i, c("x1", "x2", "n1", "n2")]) < 0))
+        .quitAnalysis(gettext("All specified frequencies need to be larger than zero."))
+      
+      tempMeasure <- with(
+        additionalEstimates[i,],
+        metafor::escalc(
+          measure = if (options[["analyzeAs"]] == "POR") "PETO" else options[["analyzeAs"]],
+          ai   = x1,
+          ci   = x2,
+          n1i  = n1,
+          n2i  = n2
+        ))
+      
+      additionalEstimates$effectSize[i]  <- tempMeasure[1,1]
+      additionalEstimates$effectSE[i]    <- sqrt(tempMeasure[1,2])
+    }
+  
+  additionalEstimates <- additionalEstimates[,c("effectSize",  "effectSE", "titleStudy")]
+  colnames(additionalEstimates)[1:2]    <- paste0(colnames(additionalEstimates)[1:2], options[["analyzeAs"]])
+  for (notComputed in c("OR","POR","RR","RD")[!c("OR","POR","RR","RD") %in% options[["analyzeAs"]]])
+    additionalEstimates[,paste0(c("effectSize",  "effectSE"), notComputed)] <- NA
+  additionalEstimates$titleStudy        <- paste0("_add", additionalEstimates$titleStudy)
+  additionalEstimates$studyYear         <- NA
+  additionalEstimates$reviewYear        <- NA
+  additionalEstimates$doi               <- "_add" 
+  additionalEstimates$titleReview       <- "_add"
+  additionalEstimates$titleMetaAnalysis <- "_add"
+  additionalEstimates$sampleSize        <- NA
+  
+  additionalEstimates <- additionalEstimates[,colnames(dataset)]
+  
   dataset <- rbind(dataset, additionalEstimates)
   
   return(dataset)
@@ -263,7 +338,7 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   # skip the removal of data sets if all are selected  
   if (all(sapply(options[["selectionGadget"]], function(item)item[["selected"]])))
     return(dataset)
-
+  
   # do the selection
   selected <- unlist(sapply(options[["selectionGadget"]], function(item)item[["value"]][item[["selected"]]]))
   
@@ -297,18 +372,6 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   
   return()
 }
-.cochraneEmulateMetaAnalysisOptions    <- function(options){
-  options[["dependent"]]       <- "effectSize"
-  options[["wlsWeights"]]      <- "effectSE"
-  options[["includeConstant"]] <- TRUE
-  options[["studyLabels"]]     <- "titleStudy"
-  options[["factors"]]         <- list()
-  options[["covariates"]]      <- list()
-  options[["modelTerms"]]      <- list()
-  options[["components"]]      <- list()
-  
-  return(options)
-}
 .cochraneReady                  <- function(options, dataset){
   
   # don't even try running the analysis before the selector gadget was generated and updated
@@ -322,7 +385,7 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   else if (options[["selectionType"]] == "selectionTextSearch")
     return(nchar(options[["textSearch"]]) > 0 && nrow(dataset) > 0)
 }
-.cochraneDecriptivePlot         <- function(container, dataset, variable, options){
+.cochraneDecriptivePlot         <- function(container, dataset, variable, options, type){
   
   if (!is.null(container[[paste0(variable,"Plot")]]))
     return()
@@ -330,15 +393,15 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   saveRDS(dataset, file = "C:/Projects/JASP/jasp-R-debug/dataset.RDS")
   descriptivePlot <- createJaspPlot(
     plot         = .plotMarginal(#jaspDescriptives:::.plotMarginal(
-      column         = dataset[[variable]],
-      variableName   = if(variable == "effectSize") gettext("Effect Size") else gettext("Sample Size"),
+      column         = .cochraneGetPlotVariable(dataset, variable, options, type),
+      variableName   = .cochraneGetPlotVariableName(variable, options, type),
       displayDensity = options[["distPlotDensity"]],
       rugs           = options[["distPlotRug"]],
       binWidthType   = options[["binWidthType"]],
       numberOfBins   = options[["numberOfBins"]]),
     width        = 300,
     aspectRatio  = 1,
-    title        = if(variable == "effectSize") gettext("Effect Sizes") else gettext("Sample Sizes"),
+    title        = .cochraneGetPlotVariableName(variable, options, type),
     position     = if(variable == "effectSize") -2 else -1,
     dependencies = c("distPlotDensity", "distPlotRug", "binWidthType", "numberOfBins", if(variable == "effectSize") "plotEffectSizes" else "plotSampleSizes")
   )
@@ -346,6 +409,35 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   container[[paste0(variable,"Plot")]] <- descriptivePlot
   
   return()
+}
+.cochraneGetPlotVariableName    <- function(variable, options, type){
+  if (type %in% c("classicalContinuous", "bayesianContinuous")){
+    if(variable == "effectSize")
+      return(gettext("Effect Size"))
+    else if (variable == "sampleSize")
+      return(gettext("Sample Size"))
+  } else if (type %in% c("classicalDichotomous", "bayesianDichotomous")){
+    if(variable == "effectSize")
+      return(switch(
+        options[["analyzeAs"]],
+        "OR"  = gettext("Log(Odds Ratio)"),
+        "POR" = gettext("Log(Peto's Odds Ratio)"),
+        "RD"  = gettext("Risk Difference"),
+        "RR"  = gettext("Log(Risk Ratio)")
+      ))
+    else if (variable == "sampleSize")
+      return(gettext("Sample Size"))
+  }
+}
+.cochraneGetPlotVariable        <- function(dataset, variable, options, type){
+  if (type %in% c("classicalContinuous", "bayesianContinuous")){
+    return(,dataset[[variable]])
+  } else if (type %in% c("classicalDichotomous", "bayesianDichotomous")){
+    if(variable == "effectSize")
+      return(dataset[[paste0(variable, options[["analyzeAs"]])]])
+    else if (variable == "sampleSize")
+      return(dataset[[variable]])
+  }
 }
 .cochraneGetOutputContainer     <- function(jaspResults, title = ""){
   if (!is.null(jaspResults[[paste0("modelContainer",title)]])) {
@@ -366,9 +458,9 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   jaspResults[["sourceTopics"]] <- createJaspQmlSource(
     "sourceTopics",
     sort(unique(sapply(database$metaAnalyses, function(metaAnalysis)metaAnalysis[["topic"]])))
-    )
-
-
+  )
+  
+  
   return()
 }
 .cochraneCreateDatabaseKeywords <- function(jaspResults, options){
@@ -404,22 +496,53 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   
   datasetOverview      <- jaspResults[["datasetOverview"]][["object"]]
   datasetTitles        <- sapply(datasetOverview, function(overview)overview$title)
-
+  
   if(length(datasetTitles) > 0){
     jaspResults[["selectionGadget"]] <- createJaspQmlSource(
       "selectionGadget",
       datasetTitles,
       c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "analyzeData"))
   }
-
+  
   return()
+}
+
+.cochraneEmulateClassicalMetaAnalysisOptions    <- function(options, type){
+  
+  if (type == "classicalContinuous"){
+    options[["dependent"]]       <- "effectSize"
+    options[["wlsWeights"]]      <- "effectSE"
+  } else if (type == "classicalDichotomous"){
+    options[["dependent"]]       <- paste0("effectSize", options[["analyzeAs"]])
+    options[["wlsWeights"]]      <- paste0("effectSE",   options[["analyzeAs"]])
+  }
+
+  options[["includeConstant"]] <- TRUE
+  options[["studyLabels"]]     <- "titleStudy"
+  options[["factors"]]         <- list()
+  options[["covariates"]]      <- list()
+  options[["modelTerms"]]      <- list()
+  options[["components"]]      <- list()
+  
+  return(options)
+}
+.cochraneEmulateBayesianMetaAnalysisOptions     <- function(options){
+  options[["dependent"]]       <- "effectSize"
+  options[["wlsWeights"]]      <- "effectSE"
+  options[["includeConstant"]] <- TRUE
+  options[["studyLabels"]]     <- "titleStudy"
+  options[["factors"]]         <- list()
+  options[["covariates"]]      <- list()
+  options[["modelTerms"]]      <- list()
+  options[["components"]]      <- list()
+  
+  return(options)
 }
 # test
 if(FALSE){
   library(jaspTools)
   library(jaspResults)
   setPkgOption('module.dirs', "C:/Projects/JASP/jaspMetaAnalysis")
-  options <- jaspTools::analysisOptions("ClassicalMetaAnalysis")
   options <- readRDS("C:/Projects/JASP/jasp-R-debug/options.RDS")
 }
 

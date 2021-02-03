@@ -15,10 +15,40 @@ Description
 	requiresData: false
 		
 
+	GroupTitle
+	{
+		title:	qsTr("Classical")
+		icon:	"cochraneLogo.svg"
+	}
+
 	Analysis
 	{
-		title:	qsTr("Classical Meta-Analysis")
-		func:	"CochraneClassicalMetaAnalysis"
+		title:	qsTr("Continuous Outcomes")
+		func:	"CochraneContinuousClassicalMetaAnalysis"
+	}
+
+	Analysis
+	{
+		title:	qsTr("Dichotomous Outcomes")
+		func:	"CochraneDichotomousClassicalMetaAnalysis"
+	}
+
+	GroupTitle
+	{
+		title:	qsTr("Bayesian")
+		icon:	"cochraneLogo2.svg"
+	}
+
+	Analysis
+	{
+		title:	qsTr("Continuous Outcomes")
+		func:	"CochraneContinuousBayesianMetaAnalysis"
+	}
+
+	Analysis
+	{
+		title:	qsTr("Dichotomous Outcomes")
+		func:	"CochraneDichotomousBayesianMetaAnalysis"
 	}
 
 }

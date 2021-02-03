@@ -15,15 +15,53 @@
 // License along with this program.  If not, see
 // <http://www.gnu.org/licenses/>.
 //
-import QtQuick			2.12
+import QtQuick			2.8
+import QtQuick.Layouts	1.3
 import JASP.Controls	1.0
 import JASP.Widgets		1.0
 import JASP				1.0
-import QtQuick.Layouts	1.3
-import "../qml/qml_components" as MA  // TODO: link to the meta-analysis repository 
+import "../qml_components" as MA
 
-Form {
-	id: form
+Section
+{
+	title: 		qsTr("Database")
+	expanded:	true
+
+	property string analysisType:	"classicalContinuous"
+
+	RadioButtonGroup
+	{
+		columns:			4
+		name:				"analyzeAs"
+		title:				qsTr("Analyze as")
+		Layout.columnSpan:	2
+		visible:			analysisType == "classicalDichotomous" || analysisType == "bayesianDichotomous"
+
+		RadioButton
+		{
+			value:		"OR"
+			label:		qsTr("Odds ratios")
+			checked:	true
+		}
+
+		RadioButton
+		{
+			value:		"POR"
+			label:		qsTr("Peto's odds ratios")
+		}
+
+		RadioButton
+		{
+			value:		"RR"
+			label:		qsTr("Risk ratios")
+		}
+
+		RadioButton
+		{
+			value:		"RD"
+			label:		qsTr("Risk differences")
+		}
+	}
 
 	RadioButtonGroup
 	{
@@ -160,7 +198,10 @@ Form {
 			}
 		}
 
-		MA.ClassicalMetaAnalysisMethod{}
+		MA.ClassicalMetaAnalysisMethod
+		{
+			visible:	analysisType == "classicalContinuous" || analysisType == "classicalDichotomous"
+		}
 	}
 
 	Group
@@ -234,10 +275,25 @@ Form {
 
 		RowLayout
 		{
-			Label { text: qsTr("Study");				Layout.preferredWidth: 250 * preferencesModel.uiScale; Layout.leftMargin: 5 * preferencesModel.uiScale}
-			Label { text: qsTr("Effect Size");			Layout.preferredWidth: 100 * preferencesModel.uiScale }
-			Label { text: qsTr("Standard Error");		Layout.preferredWidth: 100 * preferencesModel.uiScale }
-			Label { text: qsTr("Confidence Interval") }
+			Label
+			{
+				text:					qsTr("Study")
+				Layout.preferredWidth:	200 * preferencesModel.uiScale; Layout.leftMargin: 5 * preferencesModel.uiScale
+			}
+			Label
+			{
+				text:					qsTr("Effect Size")
+				Layout.preferredWidth:  50 * preferencesModel.uiScale
+			}
+			Label
+			{
+				text:					qsTr("Standard Error")
+				Layout.preferredWidth:	if (analysisType == "classicalContinuous" || analysisType == "bayesianContinuous") {100 * preferencesModel.uiScale} else {75 * preferencesModel.uiScale}
+			}
+			Label
+			{
+				text:					if (analysisType == "classicalContinuous" || analysisType == "bayesianContinuous") {qsTr("Confidence Interval")} else {qsTr("Frequencies")}
+			}
 		}
 
 		ComponentsList
@@ -250,7 +306,7 @@ Form {
 				Row
 				{
 					spacing:				4 * preferencesModel.uiScale
-					Layout.preferredWidth:	250 * preferencesModel.uiScale
+					Layout.preferredWidth:	200 * preferencesModel.uiScale
 					TextField
 					{
 						name: 				"titleStudy"
@@ -261,7 +317,7 @@ Form {
 				Row
 				{
 					spacing:				4 * preferencesModel.uiScale
-					Layout.preferredWidth: 100 * preferencesModel.uiScale
+					Layout.preferredWidth: 50 * preferencesModel.uiScale
 					TextField
 					{
 						name:				"effectSize"
@@ -274,8 +330,8 @@ Form {
 
 				Row
 				{
-					spacing:				4 * preferencesModel.uiScale
-					Layout.preferredWidth: 100 * preferencesModel.uiScale
+					spacing:				 4 * preferencesModel.uiScale
+					Layout.preferredWidth:	if (analysisType == "classicalContinuous" || analysisType == "bayesianContinuous") {100 * preferencesModel.uiScale} else {75 * preferencesModel.uiScale}
 					TextField
 					{
 						name:				"effectSE"
@@ -291,11 +347,13 @@ Form {
 				Row
 				{
 					spacing:				4 * preferencesModel.uiScale
-					Layout.preferredWidth: 155 * preferencesModel.uiScale
+					Layout.preferredWidth:	if (analysisType == "classicalContinuous" || analysisType == "bayesianContinuous") {155 * preferencesModel.uiScale} else {150 * preferencesModel.uiScale}
 					TextField
 					{
 						name:				"lCI"
+						label:				qsTr("lCI")
 						id:					lCI
+						visible:			analysisType == "classicalContinuous" || analysisType == "bayesianContinuous"
 						value:				""
 						fieldWidth: 		40 * preferencesModel.uiScale
 						useExternalBorder:	false
@@ -305,9 +363,59 @@ Form {
 					TextField
 					{
 						name:				"uCI"
+						label:				qsTr("uCI")
+						visible:			analysisType == "classicalContinuous" || analysisType == "bayesianContinuous"
 						id:					uCI
 						value:				""
 						fieldWidth: 		40 * preferencesModel.uiScale
+						useExternalBorder:	false
+						showBorder: 		true
+						//enabled:			effectSE.value == ""
+					}
+					TextField
+					{
+						name:				"x1"
+						label:				qsTr("x₁")
+						id:					x1
+						visible:			analysisType == "classicalDichotomous" || analysisType == "bayesianDichotomous"
+						value:				""
+						fieldWidth: 		30 * preferencesModel.uiScale
+						useExternalBorder:	false
+						showBorder: 		true
+						//enabled:			effectSE.value == ""
+					}
+					TextField
+					{
+						name:				"n1"
+						label:				qsTr("n₁")
+						id:					n1
+						visible:			analysisType == "classicalDichotomous" || analysisType == "bayesianDichotomous"
+						value:				""
+						fieldWidth: 		30 * preferencesModel.uiScale
+						useExternalBorder:	false
+						showBorder: 		true
+						//enabled:			effectSE.value == ""
+					}
+					TextField
+					{
+						name:				"x2"
+						label:				qsTr("x₂")
+						visible:			analysisType == "classicalDichotomous" || analysisType == "bayesianDichotomous"
+						id:					x2
+						value:				""
+						fieldWidth: 		30 * preferencesModel.uiScale
+						useExternalBorder:	false
+						showBorder: 		true
+						//enabled:			effectSE.value == ""
+					}
+					TextField
+					{
+						name:				"n2"
+						label:				qsTr("n₂")
+						visible:			analysisType == "classicalDichotomous" || analysisType == "bayesianDichotomous"
+						id:					n2
+						value:				""
+						fieldWidth: 		30 * preferencesModel.uiScale
 						useExternalBorder:	false
 						showBorder: 		true
 						//enabled:			effectSE.value == ""
@@ -316,9 +424,4 @@ Form {
 			}
 		}
 	}
-
-
-	MA.ClassicalMetaAnalysisStatistics{}
-
-	MA.ClassicalMetaAnalysisDiagnostics{}
 }
