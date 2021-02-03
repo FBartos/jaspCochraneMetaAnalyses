@@ -29,7 +29,22 @@ Form {
 		analysisType:	"bayesianContinuous"
 	}
 
-	MA.ClassicalMetaAnalysisStatistics{}
+	MA.BayesianMetaAnalysisInference{
+		id:						bayesianMetaAnalysisInference
+	}
 
-	MA.ClassicalMetaAnalysisDiagnostics{}
+	MA.BayesianMetaAnalysisPlots{
+		modelTypeValue:			bayesianMetaAnalysisInference.modelTypeValue
+		modelDirectionValue:	bayesianMetaAnalysisInference.modelDirectionValue
+	}
+
+	MA.BayesianMetaAnalysisPriors{
+		modelTypeValue:			bayesianMetaAnalysisInference.modelTypeValue
+		modelDirectionValue:	bayesianMetaAnalysisInference.modelDirectionValue
+	}
+
+	MA.BayesianMetaAnalysisAdvanced{
+		modelTypeValue:			bayesianMetaAnalysisInference.modelTypeValue
+		modelDirectionValue:	bayesianMetaAnalysisInference.modelDirectionValue
+	}
 }

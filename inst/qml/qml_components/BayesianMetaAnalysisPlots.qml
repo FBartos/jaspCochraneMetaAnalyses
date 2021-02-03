@@ -25,6 +25,9 @@ Section
 	columns: 	1
 	title: 		qsTr("Plots")
 
+	property string modelTypeValue:			"BMA"
+	property string modelDirectionValue:	"allPos"
+
 	Group
 	{
 		columns: 2
@@ -50,14 +53,14 @@ Section
 
 				RadioButton
 				{
-					enabled: 	!checkFE.checked
+					enabled: 	!(modelTypeValue == "FE")
 					name: 		"plotForestEstimated"
 					label: 		qsTr("Estimated")
 				}
 
 				RadioButton
 				{
-					enabled: 	!checkFE.checked
+					enabled: 	!(modelTypeValue == "FE")
 					name: 		"plotForestBoth"
 					label: 		qsTr("Both")
 				}
@@ -110,7 +113,7 @@ Section
 		CheckBox
 		{
 			name: "addLines"
-			enabled: checkBMA.checked || checkCRE.checked
+			enabled: modelTypeValue == "BMA" || modelTypeValue == "CRE"
 			label: qsTr("Add fixed and random effects posterior")
 		}
 		CheckBox

@@ -25,19 +25,22 @@ Section
 	columns: 	2
 	title: 		qsTr("Advanced")
 
+	property string modelTypeValue:			"BMA"
+	property string modelDirectionValue:	"allPos"
+
 	Group
 	{
 		id:			priorModelProbabilityGroup
-		enabled: 	checkFE.checked || checkRE.checked || checkBMA.checked
+		enabled: 	modelTypeValue == "FE" || modelTypeValue == "RE" || modelTypeValue == "BMA"
 		title: 		qsTr("Prior model probability")
 
-		property double fixedEffectsHypothesisVal:	checkFE.checked ? 0.5 :
-														checkRE.checked ? 0 :
-															checkBMA.checked ? 0.25 : 0
+		property double fixedEffectsHypothesisVal:	modelTypeValue == "FE" ? 0.5 :
+														modelTypeValue == "RE" ? 0 :
+															modelTypeValue == "BMA" ? 0.25 : 0
 
-		property double randomEffectsHypothesisVal:	checkFE.checked ? 0 :
-														checkRE.checked ? 0.5 :
-															checkBMA.checked ? 0.25 : 0
+		property double randomEffectsHypothesisVal:	modelTypeValue == "FE" ? 0 :
+														modelTypeValue == "RE" ? 0.5 :
+															modelTypeValue == "BMA" ? 0.25 : 0
 
 		function resetHypotheses() {
 			priorH0FE.value = fixedEffectsHypothesisVal
@@ -53,7 +56,7 @@ Section
 
 		Group
 		{
-			enabled: 			checkFE.checked || checkBMA.checked
+			enabled: 			modelTypeValue == "FE" || modelTypeValue == "BMA"
 			title: 				qsTr("Fixed effects")
 
 			onEnabledChanged: 	if(enabled) priorModelProbabilityGroup.resetHypotheses()
@@ -78,7 +81,7 @@ Section
 		Group
 		{
 			title: 				qsTr("Random effects")
-			enabled: 			checkRE.checked || checkBMA.checked
+			enabled: 			modelTypeValue == "RE" || modelTypeValue == "BMA"
 			onEnabledChanged: 	if(enabled) priorModelProbabilityGroup.resetHypotheses()
 
 			DoubleField
@@ -101,7 +104,7 @@ Section
 
 	Group
 	{
-		enabled: !checkCRE.checked
+		enabled: !(modelTypeValue == "CRE")
 
 		Group
 		{
@@ -112,7 +115,7 @@ Section
 			{
 				label: 			qsTr("iterations:")
 				name: 			"iterMCMC"
-				defaultValue: 	!checkCRE.checked ? 2000 : 10000
+				defaultValue: 	!(modelTypeValue == "CRE") ? 2000 : 10000
 				min:			100
 				max: 			1000000
 				fieldWidth: 	100

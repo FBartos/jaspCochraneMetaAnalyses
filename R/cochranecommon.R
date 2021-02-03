@@ -36,8 +36,10 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   else
     dataset <- jaspResults[["dataset"]][["object"]]
   
-  # sort the data for the forest plots
-  dataset   <- .cochraneSortData(dataset, options)
+  
+  # sort the data for the forest plots - TODO: for Bayesian
+  if (type %in% c("classicalContinuous", "classicalDichotomous"))
+    dataset   <- .cochraneSortData(dataset, options)
   
   # prepare additional qml gadget based on the selected data set
   if (is.null(jaspResults[["selectionGadget"]]))
@@ -52,6 +54,7 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   # applying the additional selection done from the check box interface
   dataset <- .cochraneRestrictDataset(dataset, options)
   
+
   # add data
   if (options[["addStudy"]]){
     if (type %in% c("classicalContinuous", "bayesianContinuous"))
@@ -68,7 +71,8 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
     options <- .cochraneEmulateBayesianMetaAnalysisOptions(options, type)
   
   ready   <- .cochraneReady(options, dataset)
-
+  
+  
   saveRDS(ready,   file = "C:/Projects/JASP/jasp-R-debug/debug.RDS")  
   saveRDS(dataset, file = "C:/Projects/JASP/jasp-R-debug/dataset.RDS")
   saveRDS(options, file = "C:/Projects/JASP/jasp-R-debug/options.RDS")
@@ -97,7 +101,8 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
       
       if (type %in% c("classicalContinuous", "classicalDichotomous"))
         .ClassicalMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
-      
+      else if (type %in% c("bayesianContinuous", "bayesianDichotomous"))
+        BayesianMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
       
       progressbarTick()
     }
@@ -116,6 +121,8 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
     
     if (type %in% c("classicalContinuous", "classicalDichotomous"))
       .ClassicalMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
+    else if (type %in% c("bayesianContinuous", "bayesianDichotomous"))
+      BayesianMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
   }
   
   
@@ -431,7 +438,7 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
 }
 .cochraneGetPlotVariable        <- function(dataset, variable, options, type){
   if (type %in% c("classicalContinuous", "bayesianContinuous")){
-    return(,dataset[[variable]])
+    return(dataset[[variable]])
   } else if (type %in% c("classicalDichotomous", "bayesianDichotomous")){
     if(variable == "effectSize")
       return(dataset[[paste0(variable, options[["analyzeAs"]])]])
@@ -506,8 +513,7 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   
   return()
 }
-
-.cochraneEmulateClassicalMetaAnalysisOptions    <- function(options, type){
+.cochraneEmulateClassicalMetaAnalysisOptions <- function(options, type){
   
   if (type == "classicalContinuous"){
     options[["dependent"]]       <- "effectSize"
@@ -526,16 +532,18 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   
   return(options)
 }
-.cochraneEmulateBayesianMetaAnalysisOptions     <- function(options){
-  options[["dependent"]]       <- "effectSize"
-  options[["wlsWeights"]]      <- "effectSE"
-  options[["includeConstant"]] <- TRUE
-  options[["studyLabels"]]     <- "titleStudy"
-  options[["factors"]]         <- list()
-  options[["covariates"]]      <- list()
-  options[["modelTerms"]]      <- list()
-  options[["components"]]      <- list()
+.cochraneEmulateBayesianMetaAnalysisOptions  <- function(options, type){
+
+  if (type == "bayesianContinuous"){
+    options[["effectSize"]]       <- "effectSize"
+    options[["standardError"]]    <- "effectSE"
+  } else if (type == "bayesianDichotomous"){
+    options[["effectSize"]]       <- paste0("effectSize", options[["analyzeAs"]])
+    options[["standardError"]]    <- paste0("effectSE",   options[["analyzeAs"]])
+  }
   
+  options[["studyLabels"]]     <- "titleStudy"
+
   return(options)
 }
 # test

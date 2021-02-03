@@ -25,6 +25,9 @@ Section
 	title:		qsTr("Inference")
 	expanded:	true
 
+	property alias modelTypeValue:			modelType.value
+	property alias modelDirectionValue:		modelDirection.value
+
 	GridLayout
 	{
 		columns: 2
@@ -34,10 +37,10 @@ Section
 		{
 			name: 	"modelSpecification"
 			title: 	qsTr("Model")
+			id:		modelType
 
 			RadioButton
 			{
-				id: 				checkFE
 				value: 				"FE"
 				label: 				qsTr("Fixed effects")
 				onCheckedChanged:	{
@@ -51,7 +54,6 @@ Section
 
 			RadioButton
 			{
-				id: 				checkRE
 				value: 				"RE"
 				label: 				qsTr("Random effects")
 				onCheckedChanged:	if(checked) priorModelProbabilityGroup.resetHypotheses()
@@ -59,7 +61,6 @@ Section
 
 			RadioButton
 			{
-				id: 				checkBMA
 				value: 				"BMA"
 				label: 				qsTr("Model averaging")
 				checked: 			true
@@ -68,7 +69,6 @@ Section
 
 			RadioButton
 			{
-				id: 				checkCRE
 				value: 				"CRE"
 				label: 				qsTr("Constrained random effects")
 				onCheckedChanged:	if(checked) priorModelProbabilityGroup.resetHypotheses()
@@ -76,12 +76,13 @@ Section
 				// Constrain effect sizes to be all positive or all negative
 				RadioButtonGroup
 				{
-					name: "direction"
+					name:	"direction"
+					id:		modelDirection
+
 					columns: 2
 
 					RadioButton
 					{
-						id: 		checkPos
 						value: 		"allPos"
 						label: 		qsTr("All positive")
 						checked:	true
@@ -89,7 +90,6 @@ Section
 
 					RadioButton
 					{
-						id: 	checkNeg
 						value: 	"allNeg"
 						label: 	qsTr("All negative")
 					}
