@@ -79,11 +79,11 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
       
       # overview figures
       if (options[["plotEffectSizes"]])
-        .cochraneDecriptivePlot(tempContainer, tempDataset, "effectSize")
+        .cochraneDecriptivePlot(tempContainer, tempDataset, "effectSize", options)
       
       # overview figures
       if (options[["plotSampleSizes"]])
-        .cochraneDecriptivePlot(tempContainer, tempDataset, "sampleSize")
+        .cochraneDecriptivePlot(tempContainer, tempDataset, "sampleSize", options)
       
       .ClassicalMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
       
@@ -96,11 +96,11 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
     
     # overview figures
     if (options[["plotEffectSizes"]])
-      .cochraneDecriptivePlot(container, dataset, "effectSize")
+      .cochraneDecriptivePlot(container, dataset, "effectSize", options)
     
     # overview figures
     if (options[["plotSampleSizes"]])
-      .cochraneDecriptivePlot(container, dataset, "sampleSize")
+      .cochraneDecriptivePlot(container, dataset, "sampleSize", options)
     
     .ClassicalMetaAnalysisCommon(container, dataset, ready, options)
   }
@@ -322,22 +322,25 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   else if (options[["selectionType"]] == "selectionTextSearch")
     return(nchar(options[["textSearch"]]) > 0 && nrow(dataset) > 0)
 }
-.cochraneDecriptivePlot         <- function(container, dataset, variable){
+.cochraneDecriptivePlot         <- function(container, dataset, variable, options){
   
   if (!is.null(container[[paste0(variable,"Plot")]]))
     return()
   
   saveRDS(dataset, file = "C:/Projects/JASP/jasp-R-debug/dataset.RDS")
   descriptivePlot <- createJaspPlot(
-    plot         = .plotMarginalCorDescriptives(#jaspDescriptives:::.plotMarginalCorDescriptives(
-      dataset[[variable]],
-      xName = if(variable == "effectSize") gettext("Effect Size") else gettext("Sample Size"),
-      yName = gettext("Density")),
+    plot         = .plotMarginal(#jaspDescriptives:::.plotMarginal(
+      column         = dataset[[variable]],
+      variableName   = if(variable == "effectSize") gettext("Effect Size") else gettext("Sample Size"),
+      displayDensity = options[["distPlotDensity"]],
+      rugs           = options[["distPlotRug"]],
+      binWidthType   = options[["binWidthType"]],
+      numberOfBins   = options[["numberOfBins"]]),
     width        = 300,
     aspectRatio  = 1,
     title        = if(variable == "effectSize") gettext("Effect Sizes") else gettext("Sample Sizes"),
     position     = if(variable == "effectSize") -2 else -1,
-    dependencies = if(variable == "effectSize") "plotEffectSizes" else "plotSampleSizes"
+    dependencies = c("distPlotDensity", "distPlotRug", "binWidthType", "numberOfBins", if(variable == "effectSize") "plotEffectSizes" else "plotSampleSizes")
   )
   
   container[[paste0(variable,"Plot")]] <- descriptivePlot
@@ -413,6 +416,98 @@ if(FALSE){
 }
 
 
+.plotMarginal                <- function(column, variableName, rugs = FALSE, displayDensity = FALSE, binWidthType = c("doane", "fd", "scott", "sturges", "manual"), numberOfBins = NA) {
+  binWidthType <- match.arg(binWidthType)
+  column   <- as.numeric(column)
+  variable <- na.omit(column)
+  
+  if (length(variable) == 0)
+    return(NULL)
+  
+  if (binWidthType == "doane") {  # https://en.wikipedia.org/wiki/Histogram#Doane's_formula
+    sigma.g1 <- sqrt((6*(length(variable) - 2)) / ((length(variable) + 1)*(length(variable) + 3)))
+    g1 <- mean(abs(variable)^3)
+    k <- 1 + log2(length(variable)) + log2(1 + (g1 / sigma.g1))
+    binWidthType <- k
+  } else if (binWidthType == "fd" && nclass.FD(variable) > 10000) { # FD-method will produce extreme number of bins and crash ggplot, mention this in footnote
+    binWidthType <- 10000
+  } else if (binWidthType == "manual") { 
+    binWidthType <- numberOfBins
+  }
+  
+  
+  h <- hist(variable, plot = FALSE, breaks = binWidthType)
+  
+  if (!displayDensity)
+    yhigh <- max(h$counts)
+  else {
+    dens <- density(variable)
+    yhigh <- max(max(h$density), max(dens$y))
+  }
+  
+  ylow <- 0
+  xticks <- base::pretty(c(variable, h$breaks), min.n = 3)
+  
+  if (!displayDensity) {
+    p <-
+      jaspGraphs::drawAxis(
+        xName = variableName, yName = gettext("Counts"), xBreaks = xticks,
+        yBreaks = base::pretty(c(0, h$counts)), force = TRUE, xLabels = xticks
+      )
+  } else {
+    p <-
+      jaspGraphs::drawAxis(
+        xName = variableName, yName = gettext("Density"), xBreaks = xticks,
+        yBreaks = c(0,  1.05 * yhigh), force = TRUE, yLabels = NULL,
+        xLabels = xticks
+      )
+  }
+  
+  
+  if (displayDensity) {
+    p <- p +
+      ggplot2::geom_histogram(
+        data = data.frame(variable),
+        mapping = ggplot2::aes(x = variable, y = ..density..),
+        binwidth = (h$breaks[2] - h$breaks[1]),
+        fill = "grey",
+        col = "black",
+        size = .7,
+        center = ((h$breaks[2] - h$breaks[1])/2)
+      ) +
+      ggplot2::geom_line(
+        data = data.frame(x = dens$x, y = dens$y),
+        mapping = ggplot2::aes(x = x, y = y),
+        lwd = 1,
+        col = "black"
+      )
+  } else {
+    p <- p +
+      ggplot2::geom_histogram(
+        data     = data.frame(variable),
+        mapping  = ggplot2::aes(x = variable, y = ..count..),
+        binwidth = (h$breaks[2] - h$breaks[1]),
+        fill     = "grey",
+        col      = "black",
+        size     = .7,
+        center    = ((h$breaks[2] - h$breaks[1])/2)
+      )
+  }
+  
+  if (rugs)
+    p <- p + ggplot2::geom_rug(data = data.frame(variable), mapping = ggplot2::aes(x = variable), sides = "b")
+  
+  
+  # JASP theme
+  p <- jaspGraphs::themeJasp(p,
+                             axisTickWidth = .7,
+                             bty = list(type = "n", ldwX = .7, lwdY = 1))
+  
+  if (displayDensity)
+    p <- p + ggplot2::theme(axis.ticks.y = ggplot2::element_blank())
+  
+  return(p)
+}
 .plotMarginalCorDescriptives <- function (variable, xName = NULL, yName = gettext("Density")){
   variable <- na.omit(variable)
   isNumeric <- !(is.factor(variable) || (is.integer(variable) && 
