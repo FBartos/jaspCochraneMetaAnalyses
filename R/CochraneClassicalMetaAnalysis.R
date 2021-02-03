@@ -112,7 +112,7 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
 .cochraneDataDependencies       <- c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "analyzeData",
                                      "addStudy", "additionalStudies", "selectionGadget")
 .cochraneLoadDatabase           <- function(jaspResults){
-  
+
   database         <- createJaspState()
   database$object  <- readRDS("C:/Projects/JASP/jaspCochraneMetaAnalyses/R/resources/database.RDS")
   jaspResults[["database"]] <- database
@@ -379,10 +379,18 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   
   if (options[["keywordsSearch"]] == "")
     keywords <- keywords
-  else
+  else if (substr(options[["keywordsSearch"]], 1 ,1) == "*" || substr(options[["keywordsSearch"]], nchar(options[["keywordsSearch"]]) ,nchar(options[["keywordsSearch"]])) == "*" )
     keywords <- keywords[grepl(options[["keywordsSearch"]], keywords, ignore.case = TRUE)]
+  else
+    keywords <- names(unlist(sapply(keywords, function(keyword){
+      keyword <- gsub("\n", ",", gsub(";", ",", gsub(" ", ",", keyword)))
+      keyword <- unlist(strsplit(keyword, split = ","))
+      keyword <- keyword[keyword != ""]
+      return(keyword[tolower(keyword) == tolower(options[["keywordsSearch"]])])
+    })))
   
-  keywords <- na.omit(keywords[1:100])
+  
+  keywords <- na.omit(keywords[1:500])
   
   jaspResults[["sourceKeywords"]] <- createJaspQmlSource(
     "sourceKeywords",
