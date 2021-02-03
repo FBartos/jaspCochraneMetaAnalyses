@@ -52,59 +52,60 @@ for(i in 1:nrow(dataStudies)){
   dataStudies$titleStudy[i] <- getLabels(dataStudies[i,])
 }
 # TODO: some studies without reported SE ... their effect sizes are computed as NAs and omited in the next step
-dataStudies <- dataStudies[,c("review_doi", "study_year", "effectSize", "effectSE", "sampleSize", "review_title", "name", "titleStudy")]
-colnames(dataStudies)[c(1:2, 6:7)] <- c("doi", "studyYear", "titleReview", "titleMetaAnalysis")
+dataStudies <- dataStudies[,c("review_doi", "study_year", "effectSize", "effectSE", "sampleSize", "review_year", "titleStudy", "name", "review_title", "review_topic", "review_keywords")]
+colnames(dataStudies)[c(1:2, 6:11)] <- c("doi", "studyYear", "reviewYear", "titleStudy", "titleMetaAnalysis", "titleReview", "reviewTopic", "reviewKeywords")
 # these are formatted as lists for whatever reason
-dataStudies$effectSize <- as.numeric(dataStudies$effectSize)
-dataStudies$effectSE   <- as.numeric(dataStudies$effectSE)
-dataStudies$sampleSize <- as.numeric(dataStudies$sampleSize)
-dataStudies <- na.omit(dataStudies)
+dataStudies$effectSize  <- as.numeric(dataStudies$effectSize)
+dataStudies$effectSE    <- as.numeric(dataStudies$effectSE)
+dataStudies$sampleSize  <- as.numeric(dataStudies$sampleSize)
+dataStudies             <- na.omit(dataStudies)
+# fix the names of reviews
+dataStudies$titleReview <- gsub("â€\u0090", " ", dataStudies$titleReview, fixed = TRUE)
 
-
-# create an indexing object for reviews
-uniqueDataMetaAnalyses <- dataContinuous[!duplicated(dataContinuous$name), c("review_doi", "meta.table.size", "review_year", "review_topic", "name", "review_keywords")]
+# create an indexing object for meta-analyses 
+uniqueDataMetaAnalyses <- dataStudies[!duplicated(dataStudies$titleMetaAnalysis),]
 
 dataMetaAnalyses     <- list()
-for(n in uniqueDataMetaAnalyses$name){
-  dataMetaAnalyses[[n]] <- with(
-    uniqueDataMetaAnalyses[uniqueDataMetaAnalyses$name == n,],
+for(title in uniqueDataMetaAnalyses$titleMetaAnalysis){
+  dataMetaAnalyses[[title]] <- with(
+    uniqueDataMetaAnalyses[uniqueDataMetaAnalyses$titleMetaAnalysis == title,],
     list(
-      title      = name,
-      nStudies   = sum(dataStudies$titleMetanalysis == n),
-      year       = review_year,
-      doi        = review_doi,
-      topic      = getTopic(review_topic),
-      keywords   = getKeywords(review_keywords)
+      title      = titleMetaAnalysis,
+      nStudies   = sum(dataStudies$titleMetaAnalysis == title),
+      year       = reviewYear,
+      doi        = doi,
+      topic      = getTopic(reviewTopic),
+      keywords   = getKeywords(reviewKeywords)
     ))
 }
 
 
-# create an indexing object for meta-analyses
-uniqueDataReviews <- dataContinuous[!duplicated(dataContinuous$review_title), c("review_doi", "meta.table.size", "review_year", "review_topic", "review_title", "review_keywords")]
+# create an indexing object for reviews
+uniqueDataReviews <- dataStudies[!duplicated(dataStudies$titleReview),]
 
 dataReviews     <- list()
-for(title in uniqueDataReviews$review_title){
-  dataReviews[[gsub("â€\u0090", " ", title, fixed = TRUE)]] <- with(
-    uniqueDataReviews[uniqueDataReviews$review_title == title,],
+for(title in uniqueDataReviews$titleReview){
+  dataReviews[[title]] <- with(
+    uniqueDataReviews[uniqueDataReviews$titleReview == title,],
     list(
-      title     = gsub("â€\u0090", " ", review_title, fixed = TRUE),
+      title     = titleReview,
       nStudies  = sum(dataStudies$titleReview == title),
-      year      = review_year,
-      doi       = review_doi,
-      topic     = getTopic(review_topic),
-      keywords  = getKeywords(review_keywords)
+      year      = reviewYear,
+      doi       = doi,
+      topic     = getTopic(reviewTopic),
+      keywords  = getKeywords(reviewKeywords)
     ))
 }
 
 
 
 saveRDS(list(
-  studies      = dataStudies,
+  studies      = dataStudies[,c("doi", "effectSize", "effectSE", "sampleSize", "studyYear", "reviewYear", "titleStudy", "titleMetaAnalysis", "titleReview")],
   metaAnalyses = dataMetaAnalyses,
   reviews      = dataReviews
 ), file = "C:/Projects/JASP/jaspCochraneMetaAnalyses/R/resources/database.RDS")
 
 # extract topics and keywords for the qml interface
-paste(sort(unique(sapply(dataMetaAnalyses, function(metaAnalysis)metaAnalysis[["topic"]]))),            collapse = "; ")
+paste(sort(unique(sapply(dataMetaAnalyses,        function(metaAnalysis)metaAnalysis[["topic"]]))),     collapse = "; ")
 paste(sort(unique(unlist(sapply(dataMetaAnalyses, function(metaAnalysis)metaAnalysis[["keywords"]])))), collapse = "; ")
 paste(sort(unique(unlist(sapply(dataReviews,      function(metaAnalysis)metaAnalysis[["keywords"]])))), collapse = "; ")

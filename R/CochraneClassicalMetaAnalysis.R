@@ -16,36 +16,54 @@
 #
 
 CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state = NULL) {
+  
   saveRDS(options, file = "C:/Projects/JASP/jasp-R-debug/options.RDS")
-
+  
+  ### work with the database and dependent menus
   # load the database
   if (is.null(jaspResults[["database"]]))
     .cochraneLoadDatabase(jaspResults)
   
+  # create the qml options based on the database
+  if(is.null(jaspResults[["sourceTopics"]]))
+    .cochraneCreateDatabaseTopics(jaspResults)
+  if(is.null(jaspResults[["sourceKeywords"]]))
+    .cochraneCreateDatabaseKeywords(jaspResults, options)
+  
+
+  ### create data set based on the database and selection
   # select data
   if (is.null(jaspResults[["dataset"]]))
-    .cochraneSelectDataset(jaspResults, options)
+    selectedDataset <- .cochraneSelectDataset(jaspResults, options)
+  else
+    selectedDataset <- jaspResults[["dataset"]][["object"]]
   
-  dataset <- jaspResults[["dataset"]]$object
+  # sort the data for the forest plots
+  selectedDataset   <- .cochraneSortData(selectedDataset, options)
   
-  # add data
-  if (options[["addStudy"]])
-    dataset <- .cochraneAddData(dataset, options)
-  
-  # sort data
-  dataset <- .cochraneSortData(dataset, options)
-  
+  # prepare additional qml gadget based on the selected dataset
+  if (is.null(jaspResults[["selectionGadget"]]))
+    .cochraneCreateSelectorGadget(jaspResults, selectedDataset)
+
   # overview table
   if (is.null(jaspResults[["selectedOverviewTable"]]))
     .cochraneSelectedOverviewTable(jaspResults, options)
   
   
+  ### based with the restricted / modified dataset based with the additional studies + restrictions
+  # applying the additional selection done from the check box interface
+  dataset <- .cochraneRestrictDataset(selectedDataset, options)
+  
+  # add data
+  if (options[["addStudy"]])
+    dataset <- .cochraneAddData(dataset, options)
+  
+  
   # reusing classical meta-analysis
   options <- .cochraneEmulateMetaAnalysisOptions(options)
+  ready   <- .cochraneReady(options, dataset)
   
-  
-  ready <- .cochraneReady(options, dataset)
-  
+  # apply the classical meta-analysis to the dataset
   if (options[["analyzeData"]] %in% c("reviews", "metaAnalyses")){
     
     selectWith <- if(options[["analyzeData"]] == "metaAnalyses") "titleMetaAnalysis" else "titleReview"
@@ -54,7 +72,7 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
     
     startProgressbar(length(selection))
     
-    for (title in selection){
+    for (title in sort(selection, decreasing = TRUE)){
       
       tempDataset   <- dataset[dataset[,selectWith] %in% c("_add", title),]
       tempContainer <- .cochraneGetOutputContainer(jaspResults, title)
@@ -91,7 +109,9 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   return()
 }
 
-.cochraneLoadDatabase          <- function(jaspResults){
+.cochraneDataDependencies       <- c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "analyzeData",
+                                     "addStudy", "additionalStudies", "selectionGadget")
+.cochraneLoadDatabase           <- function(jaspResults){
   
   database         <- createJaspState()
   database$object  <- readRDS("C:/Projects/JASP/jaspCochraneMetaAnalyses/R/resources/database.RDS")
@@ -99,19 +119,51 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   
   return()
 }
-.cochraneAddData               <- function(dataset, options){
+.cochraneAddData                <- function(dataset, options){
   
-  additionalEstimates <- sapply(options[["additionalStudies"]], function(add)add[["values"]], simplify = FALSE)
+  if (length(options[["additionalStudies"]]) == 0)
+    return(dataset)
+    
+  additionalEstimates <- sapply(options[["additionalStudies"]], function(study)unlist(study), simplify = F)
   additionalEstimates <- data.frame(do.call(rbind, additionalEstimates))
-  colnames(additionalEstimates) <- c("effectSize",  "effectSE", "titleStudy", "studyYear")
-  additionalEstimates[,"titleStudy"] <- paste0("_add", additionalEstimates[,"titleStudy"])
-  additionalEstimates <- cbind(additionalEstimates, doi = "_add", titleReview = "_add", titleMetaAnalysis = "_add", sampleSize = NA)
-  additionalEstimates <- additionalEstimates[,colnames(dataset)]
+
+  for (i in 1:ncol(additionalEstimates))
+    additionalEstimates[,i] <- as.character(additionalEstimates[,i])
   
+  for (col in c("effectSize", "effectSE", "lCI", "uCI"))
+    additionalEstimates[,col] <- as.numeric(additionalEstimates[,col])
+  
+  additionalEstimates <- additionalEstimates[!is.na(additionalEstimates[,"effectSize"]),]
+  additionalEstimates <- additionalEstimates[!is.na(additionalEstimates[,"effectSE"]) | (!is.na(additionalEstimates[,"lCI"]) & !is.na(additionalEstimates[,"uCI"])),]
+  
+  if (nrow(additionalEstimates) == 0)
+    return(dataset)
+  
+  for (i in 1:nrow(additionalEstimates))
+    if (is.na(additionalEstimates[i,"effectSE"]) && all(is.numeric(unlist(additionalEstimates[i, c("lCI", "uCI")])))){
+      if (additionalEstimates[i,"lCI"] > additionalEstimates[i,"effectSize"] || additionalEstimates[i,"uCI"] < additionalEstimates[i,"effectSize"])
+        .quitAnalysis(gettext("The effect size does not lie within the confidence interval in one of the specified studies."))
+      additionalEstimates[i,"effectSE"] <- (additionalEstimates[i,"uCI"] - additionalEstimates[i,"lCI"]) / (qnorm(.975) * 2)
+    }
+      
+  
+  if (any(additionalEstimates[,"effectSE"] < 0))
+    .quitAnalysis(gettext("One of the specified studies has a negative standard error."))
+  
+  additionalEstimates <- additionalEstimates[,c("effectSize",  "effectSE", "titleStudy")]
+  additionalEstimates$titleStudy        <- paste0("_add", additionalEstimates$titleStudy)
+  additionalEstimates$studyYear         <- NA
+  additionalEstimates$doi               <- "_add" 
+  additionalEstimates$titleReview       <- "_add"
+  additionalEstimates$titleMetaAnalysis <- "_add"
+  additionalEstimates$sampleSize        <- NA
+  additionalEstimates <- additionalEstimates[,colnames(dataset)]
+
   dataset <- rbind(dataset, additionalEstimates)
+  
   return(dataset)
 }
-.cochraneSortData              <- function(dataset, options){
+.cochraneSortData               <- function(dataset, options){
   
   if(options[["forestPlotOrder"]] == "yearAscending"){
     dataset <- dataset[order(dataset[,"studyYear"]),]
@@ -125,16 +177,17 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   
   return(dataset)
 }
-.cochraneSelectDataset         <- function(jaspResults, options){
+.cochraneSelectDataset          <- function(jaspResults, options){
   
   # create a notifier for updating the dataset
   dataset <- createJaspState()
-  dataset$dependOn(c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "analyzeData"))
+  dataset$dependOn(c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "keywordsSearch", "analyzeData"))
   jaspResults[["dataset"]] <- dataset
   
   # create an object for storing dataset overview
   if (is.null(jaspResults[["datasetOverview"]])) {
     datasetOverview <- createJaspState()
+    datasetOverview$dependOn(c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "keywordsSearch", "analyzeData"))
     jaspResults[["datasetOverview"]] <- datasetOverview
   } else
     datasetOverview <- jaspResults[["datasetOverview"]]
@@ -192,11 +245,36 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   }
   
   datasetOverview$object <- indexing[selectedTitles]
-  dataset$object         <- studies[studies[[if(options[["analyzeData"]] == "metaAnalyses") "titleMetaAnalysis" else "titleReview"]] %in% selectedTitles, ]
+  selectedDataset        <- studies[studies[[if(options[["analyzeData"]] == "metaAnalyses") "titleMetaAnalysis" else "titleReview"]] %in% selectedTitles, ]
+  dataset[["object"]]    <- selectedDataset
   
-  return()
+  return(selectedDataset)
 }
-.cochraneSelectedOverviewTable <- function(jaspResults, options){
+.cochraneRestrictDataset        <- function(dataset, options){
+  
+  # skip the restriction step unless the selector gadget was created
+  if (length(options$selectionGadget) == 0)
+    return(NULL)
+  
+  # skip the restriction step unless at least one study was selected
+  if (all(sapply(options[["selectionGadget"]], function(item)!item[["selected"]])))
+    return(NULL)
+  
+  # skip the removal of data sets if all are selected  
+  if (all(sapply(options[["selectionGadget"]], function(item)item[["selected"]])))
+    return(dataset)
+
+  # do the selection
+  selected <- unlist(sapply(options[["selectionGadget"]], function(item)item[["value"]][item[["selected"]]]))
+  
+  if (options[["analyzeData"]] == "metaAnalyses")
+    dataset <- dataset[dataset[,"titleMetaAnalysis"] %in% selected, ]
+  else
+    dataset <- dataset[dataset[,"titleReview"]       %in% selected, ]
+  
+  return(dataset)
+}
+.cochraneSelectedOverviewTable  <- function(jaspResults, options){
   
   datasetOverview      <- jaspResults[["datasetOverview"]]$object
   
@@ -206,11 +284,11 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   selectedOverviewTable$addColumnInfo(name = "year",     title = gettext("Year"),              type = "integer")
   selectedOverviewTable$addColumnInfo(name = "nStudies", title = gettext("Number of studies"), type = "integer")
   selectedOverviewTable$position <- 1
-  selectedOverviewTable$dependOn(c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "analyzeData"))
+  selectedOverviewTable$dependOn(.cochraneDataDependencies)
   jaspResults[["selectedOverviewTable"]] <- selectedOverviewTable
   
   
-  for (overview in datasetOverview)
+  for (overview in datasetOverview[order(sapply(datasetOverview, function(item)item[["title"]]))])
     selectedOverviewTable$addRows(with(overview, list(
       name      = title,
       year      = year,
@@ -231,7 +309,12 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   
   return(options)
 }
-.cochraneReady                 <- function(options, dataset){
+.cochraneReady                  <- function(options, dataset){
+  
+  # don't even try running the analysis before the selector gadget was generated and updated
+  if (length(options$selectionGadget) == 0)
+    return(FALSE)
+  
   if (options[["selectionType"]] == "selectionTopics")
     return(length(options[["topicsSelected"]]) > 0 && nrow(dataset) > 0)
   else if (options[["selectionType"]] == "selectionKeywords")
@@ -239,14 +322,14 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   else if (options[["selectionType"]] == "selectionTextSearch")
     return(nchar(options[["textSearch"]]) > 0 && nrow(dataset) > 0)
 }
-.cochraneDecriptivePlot        <- function(container, dataset, variable){
+.cochraneDecriptivePlot         <- function(container, dataset, variable){
   
   if (!is.null(container[[paste0(variable,"Plot")]]))
     return()
   
-  
+  saveRDS(dataset, file = "C:/Projects/JASP/jasp-R-debug/dataset.RDS")
   descriptivePlot <- createJaspPlot(
-    plot         = jaspDescriptives:::.plotMarginalCorDescriptives(
+    plot         = .plotMarginalCorDescriptives(#jaspDescriptives:::.plotMarginalCorDescriptives(
       dataset[[variable]],
       xName = if(variable == "effectSize") gettext("Effect Size") else gettext("Sample Size"),
       yName = gettext("Density")),
@@ -261,20 +344,65 @@ CochraneClassicalMetaAnalysis   <- function(jaspResults, dataset, options, state
   
   return()
 }
-.cochraneGetOutputContainer    <- function(jaspResults, title = ""){
+.cochraneGetOutputContainer     <- function(jaspResults, title = ""){
   if (!is.null(jaspResults[[paste0("modelContainer",title)]])) {
     modelContainer <- jaspResults[[paste0("modelContainer",title)]]
   } else {
     modelContainer <- createJaspContainer(title)
-    modelContainer$dependOn(c("selectionType", "topicsSelected", "keywordsSelected", "textSearch",
-                              "analyzeData", "addStudy", "additionalStudies", 
+    modelContainer$dependOn(c(.cochraneDataDependencies, "addStudy", "additionalStudies", 
                               "forestPlotOrder", "studyLabels",
                               "method", "test", "regressionCoefficientsConfidenceIntervalsInterval"))
     jaspResults[[paste0("modelContainer",title)]] <- modelContainer
   }
   return(modelContainer)
 }
+.cochraneCreateDatabaseTopics   <- function(jaspResults){
+  
+  database <- jaspResults[["database"]]$object
+  
+  jaspResults[["sourceTopics"]] <- createJaspQmlSource(
+    "sourceTopics",
+    sort(unique(sapply(database$metaAnalyses, function(metaAnalysis)metaAnalysis[["topic"]])))
+    )
 
+
+  return()
+}
+.cochraneCreateDatabaseKeywords <- function(jaspResults, options){
+  
+  database <- jaspResults[["database"]]$object
+  
+  keywords <- sort(unique(unlist(sapply(database$metaAnalyses, function(metaAnalysis)metaAnalysis[["keywords"]]))))
+  
+  if (options[["keywordsSearch"]] == "")
+    keywords <- keywords
+  else
+    keywords <- keywords[grepl(options[["keywordsSearch"]], keywords, ignore.case = TRUE)]
+  
+  keywords <- na.omit(keywords[1:100])
+  
+  jaspResults[["sourceKeywords"]] <- createJaspQmlSource(
+    "sourceKeywords",
+    keywords,
+    "keywordsSearch"
+  )
+  
+  return()
+}
+.cochraneCreateSelectorGadget   <- function(jaspResults, dataset){
+  
+  datasetOverview      <- jaspResults[["datasetOverview"]][["object"]]
+  datasetTitles        <- sapply(datasetOverview, function(overview)overview$title)
+
+  if(length(datasetTitles) > 0){
+    jaspResults[["selectionGadget"]] <- createJaspQmlSource(
+      "selectionGadget",
+      datasetTitles,
+      c("selectionType", "topicsSelected", "keywordsSelected", "textSearch", "analyzeData"))
+  }
+
+  return()
+}
 # test
 if(FALSE){
   library(jaspTools)
@@ -282,4 +410,51 @@ if(FALSE){
   setPkgOption('module.dirs', "C:/Projects/JASP/jaspMetaAnalysis")
   options <- jaspTools::analysisOptions("ClassicalMetaAnalysis")
   options <- readRDS("C:/Projects/JASP/jasp-R-debug/options.RDS")
+}
+
+
+.plotMarginalCorDescriptives <- function (variable, xName = NULL, yName = gettext("Density")){
+  variable <- na.omit(variable)
+  isNumeric <- !(is.factor(variable) || (is.integer(variable) && 
+                                           length(unique(variable)) <= 10))
+  if (isNumeric) {
+    p <- ggplot2::ggplot(data = data.frame(x = variable))
+    h <- hist(variable, plot = FALSE)
+    hdiff <- h$breaks[2L] - h$breaks[1L]
+    xBreaks <- jaspGraphs::getPrettyAxisBreaks(c(variable, 
+                                                 h$breaks), min.n = 3)
+    dens <- h$density
+    yBreaks <- c(0, 1.2 * max(h$density))
+    p <- p + ggplot2::geom_histogram(mapping = ggplot2::aes(x = x, 
+                                                            y = ..density..), binwidth = hdiff, fill = "grey", 
+                                     col = "black", size = 0.3, center = hdiff/2, 
+                                     stat = "bin") + ggplot2::scale_x_continuous(name = xName, 
+                                                                                 breaks = xBreaks, limits = range(xBreaks))
+  }
+  else {
+    p <- ggplot2::ggplot(data = data.frame(x = factor(variable)))
+    hdiff <- 1L
+    xBreaks <- unique(variable)
+    yBreaks <- c(0, max(table(variable)))
+    p <- p + ggplot2::geom_bar(mapping = ggplot2::aes(x = x), 
+                               fill = "grey", col = "black", size = 0.3, 
+                               stat = "count") + ggplot2::scale_x_discrete(name = xName, 
+                                                                           breaks = xBreaks)
+  }
+  yLim <- range(yBreaks)
+  if (isNumeric) {
+    density <- density(variable)
+    p <- p + ggplot2::geom_line(data = data.frame(x = density$x, 
+                                                  y = density$y), mapping = ggplot2::aes(x = x, y = y), 
+                                lwd = 0.7, col = "black")
+  }
+  
+  p <- p + ggplot2::geom_rug(ggplot2::aes(variable))
+  
+  thm <- ggplot2::theme(axis.ticks.y = ggplot2::element_blank(), 
+                        axis.title.y = ggplot2::element_text(margin = ggplot2::margin(t = 0, 
+                                                                                      r = -5, b = 0, l = 0)))
+  p <- p + ggplot2::scale_y_continuous(name = yName, breaks = yBreaks, 
+                                       labels = c("", ""), limits = yLim) + ggplot2::theme()
+  return(jaspGraphs::themeJasp(p) + thm)
 }
