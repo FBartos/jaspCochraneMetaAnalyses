@@ -29,7 +29,9 @@ Form {
 		analysisType:	"classicalContinuous"
 	}
 
-	MA.ClassicalMetaAnalysisStatistics{}
+	MA.ClassicalMetaAnalysisStatistics{
+		module:			"cochrane"
+	}
 
 	MA.ClassicalMetaAnalysisDiagnostics{}
 }

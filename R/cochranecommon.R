@@ -17,6 +17,8 @@
 
 CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) {
  
+  options[["module"]] <- "cochrane"
+  
   ### work with the database and dependent menus
   # load the database
   if (is.null(jaspResults[["database"]]))
@@ -36,8 +38,7 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   else
     dataset <- jaspResults[["dataset"]][["object"]]
   
-  
-  # sort the data for the forest plots - TODO: for Bayesian
+  # sort the data for the classical forest plots (Bayesian analysis does it inside)
   if (type %in% c("classicalContinuous", "classicalDichotomous"))
     dataset   <- .cochraneSortData(dataset, options)
   
@@ -73,7 +74,7 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   ready   <- .cochraneReady(options, dataset)
   
   
-  saveRDS(ready,   file = "C:/Projects/JASP/jasp-R-debug/debug.RDS")  
+  saveRDS(ready,   file = "C:/Projects/JASP/jasp-R-debug/ready.RDS")  
   saveRDS(dataset, file = "C:/Projects/JASP/jasp-R-debug/dataset.RDS")
   saveRDS(options, file = "C:/Projects/JASP/jasp-R-debug/options.RDS")
   
@@ -102,7 +103,7 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
       if (type %in% c("classicalContinuous", "classicalDichotomous"))
         .ClassicalMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
       else if (type %in% c("bayesianContinuous", "bayesianDichotomous"))
-        BayesianMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
+        .BayesianMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
       
       progressbarTick()
     }
@@ -120,9 +121,9 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
       .cochraneDecriptivePlot(container, dataset, "sampleSize", options, type)
     
     if (type %in% c("classicalContinuous", "classicalDichotomous"))
-      .ClassicalMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
+      .ClassicalMetaAnalysisCommon(container, dataset, ready, options)
     else if (type %in% c("bayesianContinuous", "bayesianDichotomous"))
-      BayesianMetaAnalysisCommon(tempContainer, tempDataset, ready, options)
+      .BayesianMetaAnalysisCommon(container, dataset, ready, options)
   }
   
   
@@ -384,13 +385,8 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   # don't even try running the analysis before the selector gadget was generated and updated
   if (length(options$selectionGadget) == 0)
     return(FALSE)
-  
-  if (options[["selectionType"]] == "selectionTopics")
-    return(length(options[["topicsSelected"]]) > 0 && nrow(dataset) > 0)
-  else if (options[["selectionType"]] == "selectionKeywords")
-    return(length(options[["keywordsSelected"]]) > 0 && nrow(dataset) > 0)
-  else if (options[["selectionType"]] == "selectionTextSearch")
-    return(nchar(options[["textSearch"]]) > 0 && nrow(dataset) > 0)
+
+  return( !(nrow(dataset) == 0 || is.null(dataset)) )
 }
 .cochraneDecriptivePlot         <- function(container, dataset, variable, options, type){
   
@@ -470,7 +466,7 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   
   return()
 }
-.cochraneCreateDatabaseKeywords <- function(jaspResults, options){
+.cochraneCreateDatabaseKeywords <- function(jaspResults, options, maxKeywords = 500){
   
   database <- jaspResults[["database"]]$object
   
@@ -478,8 +474,8 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
   
   if (options[["keywordsSearch"]] == "")
     keywords <- keywords
-  else if (substr(options[["keywordsSearch"]], 1 ,1) == "*" || substr(options[["keywordsSearch"]], nchar(options[["keywordsSearch"]]) ,nchar(options[["keywordsSearch"]])) == "*" )
-    keywords <- keywords[grepl(options[["keywordsSearch"]], keywords, ignore.case = TRUE)]
+  else if (substr(options[["keywordsSearch"]], 1 ,1) == "_")
+    keywords <- keywords[grepl(substr(options[["keywordsSearch"]], 2, nchar(options[["keywordsSearch"]])), keywords, ignore.case = TRUE)]
   else
     keywords <- names(unlist(sapply(keywords, function(keyword){
       keyword <- gsub("\n", ",", gsub(";", ",", gsub(" ", ",", keyword)))
@@ -489,7 +485,20 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
     })))
   
   
-  keywords <- na.omit(keywords[1:500])
+  keywords <- sort(keywords)
+  # limit the maximum number of rendered keywords to prevent laggy qml
+  if (length(keywords) > maxKeywords){
+    if (!is.null(jaspResults[["selectedOverviewTable"]]))
+      jaspResults[["selectedOverviewTable"]]$addFootnote(
+        message = gettextf(
+        "%1$i %2$s not shown in the search results (the limit is %3$i). Please, narrow your search terms.",
+        length(keywords) - maxKeywords,
+        if(length(keywords) - maxKeywords == 1) gettext("keyword was") else gettext("keywords were"),
+        maxKeywords),
+        symbol = "Note: ")
+    keywords <- keywords[1:maxKeywords]
+  }
+  # TODO: add a way to remove footnotes
   
   jaspResults[["sourceKeywords"]] <- createJaspQmlSource(
     "sourceKeywords",
@@ -550,6 +559,7 @@ CochraneCommon   <- function(jaspResults, dataset, options, type, state = NULL) 
 if(FALSE){
   library(jaspTools)
   library(jaspResults)
+  database  <- readRDS("C:/Projects/JASP/jaspCochraneMetaAnalyses/R/resources/databaseContinuous.RDS")
   setPkgOption('module.dirs', "C:/Projects/JASP/jaspMetaAnalysis")
   options <- readRDS("C:/Projects/JASP/jasp-R-debug/options.RDS")
 }

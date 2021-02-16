@@ -34,6 +34,7 @@ Form {
 	}
 
 	MA.BayesianMetaAnalysisPlots{
+		module:					"cochrane"
 		modelTypeValue:			bayesianMetaAnalysisInference.modelTypeValue
 		modelDirectionValue:	bayesianMetaAnalysisInference.modelDirectionValue
 	}

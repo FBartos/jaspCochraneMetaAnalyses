@@ -29,7 +29,9 @@ Form {
 		analysisType:	"classicalDichotomous"
 	}
 
-	MA.ClassicalMetaAnalysisStatistics{}
+	MA.ClassicalMetaAnalysisStatistics{
+		module:			"cochrane"
+	}
 
 	MA.ClassicalMetaAnalysisDiagnostics{}
 }
